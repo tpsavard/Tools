@@ -1,0 +1,9 @@
+# VS Code
+.vscode/
+.code-workspace
+
+# Fleet
+.fleet/
+
+# macOS
+.DS_Store
