@@ -71,6 +71,9 @@ def get_races(races):
 
 
 def get_time_to_race_str(race_name, race_date, current_date):
+    if current_date >= race_date:
+        return ""
+
     # Calculate the time-to-race
     delta_until_race = race_date - current_date
     weeks_delta = delta_until_race.days // 7
@@ -154,13 +157,14 @@ def collect_events(document):
                     # Ignore everything on or after the race date
                     pass
                 elif date_cursor in races:
+                    race_day_desc = (event + " per plan") if event is not None else None
                     events.append(TrainingEvent(date_cursor,
                                                 "Race Day: " + races[date_cursor],
                                                 get_event_desc(plan_name,
                                                                races,
                                                                training_plan.index(week) + 1,
                                                                date_cursor,
-                                                               None)))
+                                                               race_day_desc)))
                 elif isinstance(event, str):
                     events.append(TrainingEvent(date_cursor,
                                                 event + " Run",
