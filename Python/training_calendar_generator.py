@@ -57,9 +57,20 @@ def get_week_schedule(schedule):
     return schedule_length, running_today, events
 
 
-def get_event_desc(plan_name, current_week, current_date, race_date, event_desc):
-    checked_event_desc = event_desc + "\n\n" if event_desc is not None else ""
+def get_races(races):
+    mapped_races = {}
+    sorted_race_dates = []
+    for race in races:
+        race_name = list(race)[0]
+        race_date = race[race_name]
+        sorted_race_dates.append(race_date)
+        mapped_races[race_date] = race_name
 
+    sorted_race_dates.sort()
+    return mapped_races, sorted_race_dates[-1]
+
+
+def get_time_to_race_str(race_name, race_date, current_date):
     # Calculate the time-to-race
     delta_until_race = race_date - current_date
     weeks_delta = delta_until_race.days // 7
@@ -81,19 +92,33 @@ def get_event_desc(plan_name, current_week, current_date, race_date, event_desc)
     else:
         time_to_race += "0 days" if not time_to_race else ""
 
+    return "{} until {} (as of {})\n".format(time_to_race, race_name, current_date)
+
+
+def get_event_desc(plan_name, races, current_week, current_date, event_desc):
+    checked_event_desc = event_desc + "\n\n" if event_desc is not None else ""
+
+    # Calculate the time-to-races
+    time_to_races = ""
+    for race in races.keys():
+        time_to_races += get_time_to_race_str(races[race], race, current_date)
+
     desc = ("{}"
             "Week {}\n"
-            "{} until race (as of {})\n"
+            "{}\n"
             "{} / Training Calendar Generator")
 
-    return desc.format(checked_event_desc, current_week, time_to_race, current_date, plan_name)
+    return desc.format(checked_event_desc, current_week, time_to_races.strip(), plan_name)
 
 
 def collect_events(document):
     # Get the basic info
-    plan_name = document["Event"]  # YAML Plan Keyword
-    race_date = document["Race Date"]  # YAML Plan Keyword
+    plan_name = document["Plan Name"]  # YAML Plan Keyword
     start_day = get_weekday_ordinal(document.get("Weekly Start Day"))  # YAML Plan Keyword
+
+    # Get the races, and determine the training plan end date
+    races, last_race_date = get_races(document["Races"])  # YAML Plan Keyword
+    end_date = document["Race Date"] if "Race Date" in document else last_race_date  # YAML Plan Keyword
 
     # Build the standard weekly schedules
     weekly_schedules = {}
@@ -105,7 +130,7 @@ def collect_events(document):
     training_plan = document["Training Plan"]  # YAML Plan Keyword
 
     # Assume the race date occurs during the last week (i.e., assume recovery weeks are omitted).
-    date_cursor = race_date - timedelta(days=(race_date.weekday() + start_day))
+    date_cursor = end_date - timedelta(days=(end_date.weekday() + start_day))
     date_cursor = date_cursor - timedelta(weeks=(len(training_plan) - 1))
 
     # Collect the events
@@ -125,21 +150,33 @@ def collect_events(document):
         for day in schedule:
             if day:
                 event = next(week_itr)
-                if date_cursor > race_date:
+                if date_cursor > end_date:
                     # Ignore everything on or after the race date
                     pass
-                elif date_cursor == race_date:
+                elif date_cursor in races:
                     events.append(TrainingEvent(date_cursor,
-                                                "Race Day: " + plan_name,
-                                                get_event_desc(plan_name, training_plan.index(week) + 1, date_cursor, race_date, None)))
+                                                "Race Day: " + races[date_cursor],
+                                                get_event_desc(plan_name,
+                                                               races,
+                                                               training_plan.index(week) + 1,
+                                                               date_cursor,
+                                                               None)))
                 elif isinstance(event, str):
                     events.append(TrainingEvent(date_cursor,
                                                 event + " Run",
-                                                get_event_desc(plan_name, training_plan.index(week) + 1, date_cursor, race_date, None)))
+                                                get_event_desc(plan_name,
+                                                               races,
+                                                               training_plan.index(week) + 1,
+                                                               date_cursor,
+                                                               None)))
                 elif isinstance(event, dict) and len(event) == 2:
                     events.append(TrainingEvent(date_cursor,
                                                 event[0] + " Run",
-                                                get_event_desc(plan_name, training_plan.index(week) + 1, date_cursor, race_date, event[1])))
+                                                get_event_desc(plan_name,
+                                                               races,
+                                                               training_plan.index(week) + 1,
+                                                               date_cursor,
+                                                               event[1])))
                 else:
                     bail("Unknown object in training plan: " + str(event))
 
