@@ -95,7 +95,7 @@ def get_time_to_race_str(race_name, race_date, current_date):
     else:
         time_to_race += "0 days" if not time_to_race else ""
 
-    return "{} until {} (as of {})\n".format(time_to_race, race_name, current_date)
+    return "- {} until {}\n".format(time_to_race, race_name)
 
 
 def get_event_desc(plan_name, races, current_week, current_date, event_desc):
@@ -107,11 +107,11 @@ def get_event_desc(plan_name, races, current_week, current_date, event_desc):
         time_to_races += get_time_to_race_str(races[race], race, current_date)
 
     desc = ("{}"
-            "Week {}\n"
+            "Week {} (as of {})\n"
             "{}\n"
             "{} / Training Calendar Generator")
 
-    return desc.format(checked_event_desc, current_week, time_to_races.strip(), plan_name)
+    return desc.format(checked_event_desc, current_week, current_date, time_to_races, plan_name)
 
 
 def collect_events(document):
@@ -138,6 +138,7 @@ def collect_events(document):
 
     # Collect the events
     events = []
+    week_cursor = 1
     for week in training_plan:
         if week == "skip":
             date_cursor = date_cursor + timedelta(weeks=1)
@@ -151,26 +152,26 @@ def collect_events(document):
 
         week_itr = iter(week_events)
         for day in schedule:
-            if day:
+            if date_cursor in races:
+                race_day_desc = (next(week_itr) + " Run (per plan)") if day else None
+                events.append(TrainingEvent(date_cursor,
+                                            "Race Day: " + races[date_cursor],
+                                            get_event_desc(plan_name,
+                                                           races,
+                                                           week_cursor,
+                                                           date_cursor,
+                                                           race_day_desc)))
+            elif day:
                 event = next(week_itr)
                 if date_cursor > end_date:
                     # Ignore everything on or after the race date
                     pass
-                elif date_cursor in races:
-                    race_day_desc = (event + " per plan") if event is not None else None
-                    events.append(TrainingEvent(date_cursor,
-                                                "Race Day: " + races[date_cursor],
-                                                get_event_desc(plan_name,
-                                                               races,
-                                                               training_plan.index(week) + 1,
-                                                               date_cursor,
-                                                               race_day_desc)))
                 elif isinstance(event, str):
                     events.append(TrainingEvent(date_cursor,
                                                 event + " Run",
                                                 get_event_desc(plan_name,
                                                                races,
-                                                               training_plan.index(week) + 1,
+                                                               week_cursor,
                                                                date_cursor,
                                                                None)))
                 elif isinstance(event, dict) and len(event) == 2:
@@ -178,13 +179,15 @@ def collect_events(document):
                                                 event[0] + " Run",
                                                 get_event_desc(plan_name,
                                                                races,
-                                                               training_plan.index(week) + 1,
+                                                               week_cursor,
                                                                date_cursor,
                                                                event[1])))
                 else:
                     bail("Unknown object in training plan: " + str(event))
 
             date_cursor = date_cursor + timedelta(days=1)
+
+        week_cursor = week_cursor + 1
 
     return plan_name, events
 
